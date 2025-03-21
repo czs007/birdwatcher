@@ -39,6 +39,11 @@ type segStats struct {
 	statsMemSize  int64
 }
 
+type segDeltaStats struct {
+	deltaEntryNum int64
+	rowNum        int64
+}
+
 // SegmentCommand returns show segments command.
 func (c *ComponentShow) SegmentCommand(ctx context.Context, p *SegmentParam) error {
 	segments, err := common.ListSegmentsVersion(ctx, c.client, c.metaPath, etcdversion.GetVersion(), func(segment *models.Segment) bool {
@@ -64,6 +69,7 @@ func (c *ComponentShow) SegmentCommand(ctx context.Context, p *SegmentParam) err
 	collectionID2Segments := lo.GroupBy(segments, func(s *models.Segment) int64 {
 		return s.CollectionID
 	})
+	collectionID2SegDeltaStats := make(map[int64]map[int64]*segDeltaStats)
 
 	for collectionID, segs := range collectionID2Segments {
 		fmt.Printf("===============================CollectionID: %d===========================\n", collectionID)
@@ -71,6 +77,7 @@ func (c *ComponentShow) SegmentCommand(ctx context.Context, p *SegmentParam) err
 			binlogLogSize: make(map[int64]int64),
 			binlogMemSize: make(map[int64]int64),
 		}
+		collectionID2SegDeltaStats[collectionID] = make(map[int64]*segDeltaStats)
 
 		for _, info := range segs {
 			if info.State != models.SegmentStateDropped {
@@ -103,6 +110,8 @@ func (c *ComponentShow) SegmentCommand(ctx context.Context, p *SegmentParam) err
 					info.ID, info.PartitionID, info.State.String(), info.Level.String(), info.NumOfRows, info.PartitionStatsVersion, info.IsSorted)
 			case "statistics":
 				if info.State != models.SegmentStateDropped {
+					segDelta := &segDeltaStats{}
+					segDelta.rowNum = info.NumOfRows
 					for _, binlog := range info.GetBinlogs() {
 						for _, log := range binlog.Binlogs {
 							collectionID2SegStats[collectionID].binlogLogSize[binlog.FieldID] += log.LogSize
@@ -114,6 +123,7 @@ func (c *ComponentShow) SegmentCommand(ctx context.Context, p *SegmentParam) err
 							collectionID2SegStats[collectionID].deltaLogSize += log.LogSize
 							collectionID2SegStats[collectionID].deltaMemSize += log.MemSize
 							collectionID2SegStats[collectionID].deltaEntryNum += log.EntriesNum
+							segDelta.deltaEntryNum += log.EntriesNum
 						}
 					}
 					for _, statslog := range info.GetStatslogs() {
@@ -122,6 +132,7 @@ func (c *ComponentShow) SegmentCommand(ctx context.Context, p *SegmentParam) err
 							collectionID2SegStats[collectionID].statsMemSize += binlog.MemSize
 						}
 					}
+					collectionID2SegDeltaStats[collectionID][info.ID] = segDelta
 				}
 			default:
 				err := fmt.Errorf("unsupport format:%s", p.Format)
@@ -130,6 +141,7 @@ func (c *ComponentShow) SegmentCommand(ctx context.Context, p *SegmentParam) err
 		}
 		if p.Format == "statistics" {
 			outputStats("Collection", collectionID2SegStats[collectionID])
+			outputDeltaStats("SegmentDelta", collectionID2SegDeltaStats[collectionID])
 		}
 		fmt.Printf("\n")
 	}
@@ -142,6 +154,16 @@ func (c *ComponentShow) SegmentCommand(ctx context.Context, p *SegmentParam) err
 	fmt.Printf("--- Small Segments: %d, row count: %d\t Other Segments: %d, row count: %d\n", small, smallCnt, other, otherCnt)
 	fmt.Printf("--- Total Segments: %d, row count: %d\n", healthy, totalRC)
 	return nil
+}
+
+func outputDeltaStats(scope string, stats map[int64]*segDeltaStats) {
+	for segID, deltaStats := range stats {
+		ratio := 0.0
+		if deltaStats.deltaEntryNum != 0 {
+			ratio = float64(deltaStats.deltaEntryNum) / float64(deltaStats.deltaEntryNum)
+		}
+		fmt.Printf("segID:%v, numRow: %v, deltaEntries: %v, ratio: %v", segID, deltaStats.rowNum, deltaStats.deltaEntryNum, ratio)
+	}
 }
 
 func outputStats(scope string, stats ...*segStats) {
