@@ -86,20 +86,29 @@ func (s *InstanceState) DownloadBinlogCommand(ctx context.Context, p *DownloadPr
 		return minioClient.GetObject(ctx, bucketName, logPath, minio.GetObjectOptions{})
 	}
 
-	fmt.Printf("=== start to execute \"%s\" task with filter expresion: \"%s\" ===\n")
+	for _, segment := range segments {
+		if segment.Level != models.SegmentLevelL0 {
+			err = s.downloadPrimaryKeys(ctx, segment, fields, pkField.FieldID, getObject)
+			if err != nil {
+				return err
+			}
+			// download bf files
+			if err := s.downloadBFs(segment, pkField.FieldID, getObject); err != nil {
+				return err
+			}
+		}
 
-	normalSegments := lo.Filter(segments, func(segment *models.Segment, _ int) bool {
-		return segment.Level != models.SegmentLevelL0
-	})
+		// download delta files
+		if err := s.downloadDeltaLogs(segment, getObject); err != nil {
+			return err
+		}
+		return nil
 
-	for _, segment := range normalSegments {
-		s.processOneSegment(ctx, segment, fields, pkField.FieldID, getObject)
 	}
 	return nil
 }
 
-func (s *InstanceState) processOneSegment(ctx context.Context, segment *models.Segment, fields map[int64]models.FieldSchema, pkFieldID int64, getObject func(binlogPath string) (*minio.Object, error)) error {
-
+func (s *InstanceState) downloadPrimaryKeys(ctx context.Context, segment *models.Segment, fields map[int64]models.FieldSchema, pkFieldID int64, getObject func(binlogPath string) (*minio.Object, error)) error {
 	var pkBinlog *models.FieldBinlog
 	targetFieldBinlogs := []*models.FieldBinlog{}
 	for _, fieldBinlog := range segment.GetBinlogs() {
@@ -216,17 +225,6 @@ func (s *InstanceState) processOneSegment(ctx context.Context, segment *models.S
 
 	if err := outputFile.Sync(); err != nil {
 		return fmt.Errorf("failed to sync file: %v", err)
-	}
-
-	// download bf files
-	if err := s.downloadBFs(segment, pkFieldID, getObject); err != nil {
-		return err
-	}
-
-	//
-	// download delta files
-	if err := s.downloadDeltaLogs(segment, pkFieldID, getObject); err != nil {
-		return err
 	}
 	return nil
 }
@@ -374,7 +372,7 @@ func (s *InstanceState) downloadPrimaryKs(pk storage.ReadSeeker, fields map[int6
 	return nil
 }
 
-func (s *InstanceState) downloadDeltaLogs(segment *models.Segment, pkFieldID int64, getObject func(binlogPath string) (*minio.Object, error)) error {
+func (s *InstanceState) downloadDeltaLogs(segment *models.Segment, getObject func(binlogPath string) (*minio.Object, error)) error {
 	deltaFiles := []string{}
 	for _, binlog := range segment.GetDeltalogs() {
 		for _, log := range binlog.Binlogs {
