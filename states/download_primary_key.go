@@ -71,6 +71,7 @@ func (s *InstanceState) DownloadBinlogCommand(ctx context.Context, p *DownloadPr
 		return err
 	}
 
+	fmt.Println("len of segments:", len(segments))
 	params := []oss.MinioConnectParam{oss.WithSkipCheckBucket(p.SkipBucketCheck)}
 	if p.MinioAddress != "" {
 		params = append(params, oss.WithMinioAddr(p.MinioAddress))
