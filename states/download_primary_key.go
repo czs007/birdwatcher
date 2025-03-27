@@ -88,6 +88,12 @@ func (s *InstanceState) DownloadBinlogCommand(ctx context.Context, p *DownloadPr
 	}
 
 	for _, segment := range segments {
+		dirPath := fmt.Sprintf("./dewu/%d/", segment.ID)
+		err := os.MkdirAll(dirPath, 0755)
+		if err != nil {
+			fmt.Println("failed to create dir:", err)
+			return err
+		}
 		if segment.Level != models.SegmentLevelL0 {
 			err = s.downloadPrimaryKeys(ctx, segment, fields, pkField.FieldID, getObject)
 			if err != nil {
@@ -205,7 +211,7 @@ func (s *InstanceState) downloadPrimaryKeys(ctx context.Context, segment *models
 		return entries[i].PK < entries[j].PK
 	})
 
-	outputPath := fmt.Sprintf("./%d/%d.pk", segment.ID, segment.ID)
+	outputPath := fmt.Sprintf("./dewu/%d/%d.pk", segment.ID, segment.ID)
 	outputFile, err := os.Create(outputPath)
 	if err != nil {
 		return fmt.Errorf("create file failed: %v", err)
@@ -266,9 +272,9 @@ func (s *InstanceState) downloadBFs(segment *models.Segment, pkFieldID int64, ge
 		}
 		f_name := ""
 		if statsType == 1 {
-			f_name = fmt.Sprintf("./%d/%d_%d.bf_1", segment.ID, segment.ID, idx)
+			f_name = fmt.Sprintf("./dewu/%d/%d_%d.bf_1", segment.ID, segment.ID, idx)
 		} else {
-			f_name = fmt.Sprintf("./%d/%d_%d.bf_0", segment.ID, segment.ID, idx)
+			f_name = fmt.Sprintf("./dewu/%d/%d_%d.bf_0", segment.ID, segment.ID, idx)
 		}
 		f, err := os.Create(f_name)
 		if err != nil {
@@ -392,7 +398,7 @@ func (s *InstanceState) downloadDeltaLogs(segment *models.Segment, getObject fun
 			fmt.Println("failed to download bf file")
 			return err
 		}
-		f_name := fmt.Sprintf("./%d/%d_%d.delta", segment.ID, segment.ID, idx)
+		f_name := fmt.Sprintf("./dewu/%d/%d_%d.delta", segment.ID, segment.ID, idx)
 		f, err := os.Create(f_name)
 		if err != nil {
 			fmt.Println("failed to open file")
