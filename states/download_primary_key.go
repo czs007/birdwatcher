@@ -92,6 +92,8 @@ func (s *InstanceState) DownloadBinlogCommand(ctx context.Context, p *DownloadPr
 		return segment.Level != models.SegmentLevelL0
 	})
 
+	fmt.Println("segments len", len(normalSegments))
+
 	for _, segment := range normalSegments {
 		s.processOneSegment(ctx, segment, fields, pkField.FieldID, getObject)
 	}
@@ -219,11 +221,13 @@ func (s *InstanceState) processOneSegment(ctx context.Context, segment *models.S
 	}
 
 	// download bf files
+	fmt.Println("start to download BFs")
 	if err := s.downloadBFs(segment, pkFieldID, getObject); err != nil {
 		return err
 	}
 
-	//
+	fmt.Println("start to download DeltaLogs")
+
 	// download delta files
 	if err := s.downloadDeltaLogs(segment, pkFieldID, getObject); err != nil {
 		return err
@@ -289,6 +293,7 @@ func (s *InstanceState) downloadBFs(segment *models.Segment, pkFieldID int64, ge
 }
 
 func (s *InstanceState) downloadPrimaryKs(pk storage.ReadSeeker, fields map[int64]storage.ReadSeeker, scanner func(pk storage.PrimaryKey, offset int, values map[int64]any) error) error {
+	fmt.Println("Start to download primary keys")
 	pkReader, desc, err := storage.NewBinlogReader(pk)
 	if err != nil {
 		return err
